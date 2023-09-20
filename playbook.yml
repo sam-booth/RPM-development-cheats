@@ -1,0 +1,112 @@
+---
+- hosts: devservers
+  vars:
+    user:
+      username: sam
+      fullname: Sam Booth
+      email: my@email.com
+      home: /home/sam
+  tasks:
+    - name: variables
+      debug:
+        msg: "Username: {{ user['username'] }}, Home dir: {{ user['home'] }}"
+
+    # Redo this
+    - name: Enable dev repos
+      become: True
+      command: "dnf config-manager --set-enabled ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_developer ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_developer_EPEL ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_codeready_builder"
+
+    - name: User setup
+      become: True
+      user:
+        name: "{{ user['username'] }}"
+        groups:
+         - wheel
+        createhome: yes
+
+    - name: Creates git folder
+      become: True
+      become_user: "{{ user['username'] }}"
+      ansible.builtin.file:
+        path: "/home/{{ user['username'] }}/git"
+        state: directory
+        mode: ug+rwx,o+rx
+
+    - name: Dev install
+      become: True
+      ansible.builtin.package:
+        name:
+          - rpmdevtools
+          - rpmlint
+          - mc
+          - git
+          - gcc
+          - rpm-build
+          - rpm-devel
+          - make
+          - python3
+          - coreutils
+          - diffutils
+          - patch
+        state: latest
+
+    - name: Setup rpmtree
+      become: True
+      become_user: "{{ user['username'] }}"
+      command: "chdir=/home/{{ user['username'] }}/ rpmdev-setuptree"
+
+    - name: configure Git
+      become: True
+      become_user: "{{ user['username'] }}"
+      command: "chdir=/home/{{ user['username'] }}/ git config --global user.name '{{ user['fullname'] }}'"
+
+    - name: configure Git
+      become: True
+      become_user: "{{ user['username'] }}"
+      command: "chdir=/home/{{ user['username'] }}/ git config --global user.email '{{ user['email'] }}'"
+
+    - name: debug git
+      debug:
+        msg: "Name: {{ user['fullname'] }}, email: {{ user['email'] }}"
+
+    - name: bashrc dropin
+      become: True
+      become_user: "{{ user['username'] }}"
+      ansible.builtin.blockinfile:
+        path: "/home/{{ user['username'] }}/.bashrc"
+        insertafter: "#User specific aliases and functions"
+        block: "{{ lookup('file', 'files/bashrc') }}"
+        marker: "# ================ NO TOUCHY!!! ======================"
+
+    - name: Dont overwrite your ssh key
+      become: True
+      become_user: "{{ user['username'] }}"
+      stat:
+        path: "/home/{{ user['username'] }}/.ssh/id_ecdsa"
+      register: stat_result
+
+    - name: ssh-key gen
+      become: True
+      become_user: "{{ user['username'] }}"
+      command : "ssh-keygen -t ecdsa -N '' -C '{{ inventory_hostname }}' -f ~/.ssh/id_ecdsa "
+      when: stat_result.stat.exists == False
+
+    - name: rsyslog dropin
+      become: True
+      copy:
+        src: "files/rsyslog.d/"
+        dest: "/etc/rsyslog.d/"
+
+    - name: logrotate dropin
+      become: True
+      copy:
+        src: "files/logrotate.d/"
+        dest: "/etc/logrotate.d/"
+
+    - name: Restart rsyslog (changes take effect)
+      become: True
+      command: "systemctl restart rsyslog"
+
+    - name: Print message
+      debug:
+        msg: Ok you can ctrlc it now
