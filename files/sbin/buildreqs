@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# This work of art is a lazy way of quickly installing
+# all the packages you need to build a spec file.
+#
+# It is not a 100%-zero-effort solution, you will still
+# need to source libraries and expand your own macros.
+# WIP
+
+RPMPATH='/home/sam/rpmbuild'
+TMPFILE='/tmp/dev.tmp'
+
+rpm2cpio $1 | cpio -civu > $TMPFILE 2>&1
+SPEC=$(grep 'spec' $TMPFILE)
+grep 'BuildRequires' $RPMPATH/SOURCES/$SPEC | cut -d ' ' -f 2 > $TMPFILE
+
+# An abundance of caution
+echo "Find replacements for:"
+egrep '#|%|{|}|_|/' $TMPFILE
+
+# I hate sed more than I hate this
+egrep -v '#|%|{|}|_|/' $TMPFILE > tmp &&  mv tmp $TMPFILE
+dnf install -y $(cat $TMPFILE)
+rm $TMPFILE
