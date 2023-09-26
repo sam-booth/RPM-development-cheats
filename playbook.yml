@@ -36,6 +36,8 @@
       become: True
       ansible.builtin.package:
         name:
+          - autoconf
+          - autoconf-archive
           - rpmdevtools
           - rpmlint
           - mc
@@ -106,6 +108,13 @@
     - name: Restart rsyslog (changes take effect)
       become: True
       command: "systemctl restart rsyslog"
+
+    - name: dev script dropin
+      become: True
+      copy:
+        src: "files/sbin/buildreq"
+        dest: "/usr/sbin/buildreq
+        mode: ugo=rx
 
     - name: Print message
       debug:
