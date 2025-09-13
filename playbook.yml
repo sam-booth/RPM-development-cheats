@@ -1,5 +1,5 @@
 ---
-- hosts: devservers
+- hosts: development
   vars:
     user:
       username: sam
@@ -11,10 +11,31 @@
       debug:
         msg: "Username: {{ user['username'] }}, Home dir: {{ user['home'] }}"
 
-    # Redo this
+    # This needs to happen first to enable the epel repo
+    - name: epel install
+      become: True
+      ansible.builtin.package:
+        name:
+          oracle-epel-release-el{{ hostvars[inventory_hostname].ansible_distribution_major_version }}
+        state: latest
+
     - name: Enable dev repos
       become: True
-      command: "dnf config-manager --set-enabled ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_developer ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_developer_EPEL ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_codeready_builder"
+      command: "dnf config-manager --set-enabled ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_developer ol{{ hostvars[inventory_hostname].ansible_distribution_major_version }}_codeready_builder"
+
+
+     # It's really annoying I have to do this
+    - name: Enable epel repos on 10
+      command: "dnf config-manager --set-enabled ol10_u0_developer_EPEL"
+      become: True
+      when:
+        - ansible_facts['distribution_major_version'] == "10"
+    - name: Enable epel	repos on 9
+      command: "dnf config-manager --set-enabled ol9_developer_EPEL"
+      become: True
+      when:
+        - ansible_facts['distribution_major_version'] == "9"
+
 
     - name: User setup
       become: True
@@ -50,6 +71,8 @@
           - coreutils
           - diffutils
           - patch
+          - vim
+          - nano
         state: latest
 
     - name: Setup rpmtree
@@ -71,15 +94,6 @@
       debug:
         msg: "Name: {{ user['fullname'] }}, email: {{ user['email'] }}"
 
-    - name: bashrc dropin
-      become: True
-      become_user: "{{ user['username'] }}"
-      ansible.builtin.blockinfile:
-        path: "/home/{{ user['username'] }}/.bashrc"
-        insertafter: "#User specific aliases and functions"
-        block: "{{ lookup('file', 'files/bashrc') }}"
-        marker: "# ================ NO TOUCHY!!! ======================"
-
     - name: Dont overwrite your ssh key
       become: True
       become_user: "{{ user['username'] }}"
@@ -92,29 +106,6 @@
       become_user: "{{ user['username'] }}"
       command : "ssh-keygen -t ecdsa -N '' -C '{{ inventory_hostname }}' -f ~/.ssh/id_ecdsa "
       when: stat_result.stat.exists == False
-
-    - name: rsyslog dropin
-      become: True
-      copy:
-        src: "files/rsyslog.d/"
-        dest: "/etc/rsyslog.d/"
-
-    - name: logrotate dropin
-      become: True
-      copy:
-        src: "files/logrotate.d/"
-        dest: "/etc/logrotate.d/"
-
-    - name: Restart rsyslog (changes take effect)
-      become: True
-      command: "systemctl restart rsyslog"
-
-    - name: dev script dropin
-      become: True
-      copy:
-        src: "files/sbin/buildreq"
-        dest: "/usr/sbin/buildreq
-        mode: ugo=rx
 
     - name: Print message
       debug:
